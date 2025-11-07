@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Ultimate AI Excuse Generator</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Firebase/Gemini dependencies -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        let db, auth;
+        let userId = 'anon-user-' + crypto.randomUUID(); // Default anonymous user ID
+
+        // Initialize Firebase and Authentication (required for platform context)
+        async function initializeFirebase() {
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                userId = auth.currentUser?.uid || userId;
+                console.log("Firebase initialized. User ID:", userId);
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+            }
+        }
+
+        initializeFirebase();
+
+        window.generateExcuse = async function() {
+            const excuseInput = document.getElementById('excuseInput').value.trim();
+            const resultDiv = document.getElementById('result');
+            const generateButton = document.getElementById('generateButton');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+
+            if (!excuseInput) {
+                resultDiv.innerHTML = '<p class="text-red-500 font-medium">Please enter a situation to excuse yourself from!</p>';
+                return;
+            }
+
+            resultDiv.innerHTML = '';
+            loadingIndicator.classList.remove('hidden');
+            generateButton.disabled = true;
+
+            const apiKey = ""; // API key is handled by the canvas environment
+
+            // System instruction to define the AI's persona
+            const systemPrompt = "You are the Ultimate Excuse Generator, designed to create humorous, highly creative, and completely implausible reasons for any situation. The excuse should be short (1-2 sentences), punchy, and sound like something out of a cartoon or sci-fi movie.";
+
+            // User query based on the input
+            const userQuery = `Generate a funny, incredible, and ridiculous excuse for the following situation: "${excuseInput}"`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const MAX_RETRIES = 5;
+
+            // Utility for robust API calling with exponential backoff
+            async function fetchWithBackoff(url, options, retries = 0) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        if (response.status === 429 && retries < MAX_RETRIES) {
+                            const delay = Math.pow(2, retries) * 1000 + Math.random() * 1000;
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            return fetchWithBackoff(url, options, retries + 1);
+                        }
+                        throw new Error(`API request failed with status: ${response.status}`);
+                    }
+                    return response.json();
+                } catch (error) {
+                    if (retries < MAX_RETRIES) {
+                        const delay = Math.pow(2, retries) * 1000 + Math.random() * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        return fetchWithBackoff(url, options, retries + 1);
+                    }
+                    console.error("Failed to fetch content after multiple retries:", error);
+                    throw error;
+                }
+            }
+
+            try {
+                const responseData = await fetchWithBackoff(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const generatedText = responseData.candidates?.[0]?.content?.parts?.[0]?.text || "The AI is currently hiding from its own ridiculousness. Try again.";
+
+                resultDiv.innerHTML = `
+                    <p class="text-2xl sm:text-3xl font-extrabold text-gray-800 leading-snug">
+                        "${generatedText}"
+                    </p>
+                `;
+
+            } catch (error) {
+                console.error("Error generating excuse:", error);
+                resultDiv.innerHTML = `<p class="text-red-600 font-medium">Sorry, the AI is tied up in a bureaucratic nightmare. Error: ${error.message}</p>`;
+            } finally {
+                loadingIndicator.classList.add('hidden');
+                generateButton.disabled = false;
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Bungee+Spice&family=Inter:wght@100..900&display=swap');
+        
+        .font-bungee {
+            font-family: 'Bungee Spice', cursive;
+        }
+        .font-inter {
+            font-family: 'Inter', sans-serif;
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #f0f9ff 0%, #cbebff 100%);
+        }
+        .glowing-shadow {
+            box-shadow: 0 0 15px rgba(255, 107, 107, 0.6);
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen flex items-center justify-center p-4 font-inter">
+
+    <div class="w-full max-w-xl bg-white p-6 sm:p-10 rounded-3xl shadow-2xl glowing-shadow border-4 border-red-400/50 transition duration-500 hover:shadow-red-300">
+
+        <!-- Title and Description -->
+        <h1 class="text-4xl sm:text-5xl font-bungee text-red-500 text-center mb-2 animate-pulse">
+            The Excuse Bot
+        </h1>
+        <p class="text-center text-gray-600 mb-8 text-lg font-medium">
+            Generate an excuse so ridiculous, no one will dare question it.
+        </p>
+
+        <!-- Input Area -->
+        <div class="mb-6">
+            <label for="excuseInput" class="block text-xl font-bold text-gray-700 mb-2">
+                The Situation:
+            </label>
+            <input 
+                type="text" 
+                id="excuseInput" 
+                placeholder="e.g., Why I'm late to work..." 
+                class="w-full p-4 border-2 border-red-300 rounded-xl focus:ring-red-500 focus:border-red-500 shadow-md text-lg transition duration-300 hover:border-red-400"
+            />
+        </div>
+
+        <!-- Action Button -->
+        <button 
+            id="generateButton"
+            onclick="generateExcuse()" 
+            class="w-full py-4 bg-red-500 text-white font-extrabold text-xl rounded-xl shadow-lg hover:bg-red-600 transition duration-300 transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 flex items-center justify-center"
+        >
+            <svg class="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+            </svg>
+            GET MY ABSOLUTELY VITAL EXCUSE
+        </button>
+        
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="hidden text-center mt-8">
+            <div class="animate-spin rounded-full h-10 w-10 border-4 border-red-500 border-t-transparent mx-auto"></div>
+            <p class="mt-3 text-red-500 font-semibold">Fabricating reality...</p>
+        </div>
+
+        <!-- Result Display -->
+        <div id="result" class="mt-8 p-6 bg-red-50 border-l-4 border-red-400 rounded-xl shadow-inner min-h-[80px] flex items-center justify-center text-center">
+            <p class="text-gray-500 italic text-base">Your future lies in this box. What's the situation?</p>
+        </div>
+
+        <!-- Footer / Credits -->
+        <p class="text-center text-xs text-gray-400 mt-8">
+            Powered by the incredibly imaginative Swappy's mind. Use responsibly (or don't).
+        </p>
+    </div>
+
+</body>
+</html>
